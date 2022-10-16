@@ -105,7 +105,12 @@ function TomTom:SetCrazyArrow(uid, dist, title)
 
 	active_point = uid
 	arrive_distance = dist
-	point_title = title
+
+	if active_point.rn and active_point.rn ~= "" then 
+		title = title .. " (" .. active_point.rn .. ")"
+	end
+
+	point_title = title	
 
 	if self.profile.arrow.enable then
 		wayframe.title:SetText(title or L["Unknown waypoint"])
@@ -506,6 +511,7 @@ local function wayframe_OnEvent(self, event, arg1, ...)
 					local dist = TomTom:GetDistanceToWaypoint(active_point)
 					if dist then
 						tooltip:AddLine(point_title or L["Unknown waypoint"])
+						tooltip:AddLine(active_point.rn or L["Not part of a route"])
 						tooltip:AddLine(sformat(L["%d yards"], dist), 1, 1, 1)
 					end
 				end,
@@ -678,10 +684,11 @@ function TomTom:ClearCrazyArrowPoint(remove)
 			local uid = active_point
 			TomTom:RemoveWaypoint(uid)
 		else
-			local prior = active_point
 			active_point = nil
 			if TomTom.profile.arrow.setclosest then
-				local uid = TomTom:GetClosestWaypoint()
+
+				local uid TomTom:GetClosestWaypoint()
+
 				if uid and uid ~= prior then
 					TomTom:SetClosestWaypoint()
 					return

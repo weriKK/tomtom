@@ -27,6 +27,9 @@ local RoundCoords
 
 local waypoints = {}
 
+local activeRouteName = ""
+local activeRouteCounter = 0
+
 function TomTom:Initialize(event, addon)
     self.defaults = {
         profile = {
@@ -933,7 +936,12 @@ function TomTom:AddWaypoint(m, x, y, opts)
     end
 
     -- uid is the 'new waypoint' called this for historical reasons
-    local uid = {m, x, y, title = opts.title, from=(opts.from or "?")}
+    local uid = {m, x, y, title = opts.title, from=(opts.from or "?"), rn = activeRouteName, rc = activeRouteCounter}
+    activeRouteCounter = activeRouteCounter + 1
+
+    if activeRouteName ~= "" then
+        ChatFrame1:AddMessage("Waypoint added to route: '" .. uid.rn .. "'")
+    end
 
     -- Copy over any options, so we have them
     for k,v in pairs(opts) do
@@ -1212,6 +1220,47 @@ function TomTom:GetCZWFromMapID(m)
     return continent, zone, world
 end
 
+function TomTom:GetNextRouteWaypoint()
+    local m,x,y = self:GetCurrentPlayerPosition()
+    local c,z,w = TomTom:GetCZWFromMapID(m)
+    
+    local next_waypoint = nil
+
+    if not self.profile.arrow.closestusecontinent then
+		-- Simple search within this zone
+        ChatFrame1:AddMessage("Simple search within this zone")
+		if waypoints[m] then
+			for key, waypoint in pairs(waypoints[m]) do
+                if next_waypoint == nil and waypoint.rn and waypoint.rn ~= "" then
+                    next_waypoint = waypoint
+                end
+                if next_waypoint and next_waypoint.rn ~= "" and waypoint.rc < next_waypoint.rc then
+                    next_waypoint = waypoint
+                end
+			end
+		end
+	else
+		-- Search all waypoints on this continent
+        ChatFrame1:AddMessage("Search all waypoints on this continent")
+		for map, waypoints in pairs(waypoints) do
+			if c == TomTom:GetCZWFromMapID(map) then
+				for key, waypoint in pairs(waypoints) do
+                    if next_waypoint == nil and waypoint.rn ~= "" then
+                        next_waypoint = waypoint
+                    end
+                    if next_waypoint.rn ~= "" and waypoint.rc < next_waypoint.rc then
+                        next_waypoint = waypoint
+                    end
+				end
+			end
+		end
+	end
+
+    if next_waypoint ~= nil then
+        return next_waypoint
+    end
+end
+
 function TomTom:GetClosestWaypoint()
     local m,x,y = self:GetCurrentPlayerPosition()
     local c,z,w = TomTom:GetCZWFromMapID(m)
@@ -1221,6 +1270,7 @@ function TomTom:GetClosestWaypoint()
 
     if not self.profile.arrow.closestusecontinent then
 		-- Simple search within this zone
+        ChatFrame1:AddMessage("Simple search within this zone")
 		if waypoints[m] then
 			for key, waypoint in pairs(waypoints[m]) do
 				local dist = TomTom:GetDistanceToWaypoint(waypoint)
@@ -1229,9 +1279,12 @@ function TomTom:GetClosestWaypoint()
 					closest_waypoint = waypoint
 				end
 			end
+
+
 		end
 	else
 		-- Search all waypoints on this continent
+        ChatFrame1:AddMessage("Search all waypoints on this continent")
 		for map, waypoints in pairs(waypoints) do
 			if c == TomTom:GetCZWFromMapID(map) then
 				for key, waypoint in pairs(waypoints) do
@@ -1251,7 +1304,15 @@ function TomTom:GetClosestWaypoint()
 end
 
 function TomTom:SetClosestWaypoint(verbose)
-    local uid = self:GetClosestWaypoint()
+
+    local uid = TomTom:GetNextRouteWaypoint()
+    if uid then 
+        ChatFrame1:AddMessage("Going to next route")
+    else
+        ChatFrame1:AddMessage("Going to closest waypoint")
+        uid = self:GetClosestWaypoint()
+    end
+
     if uid then
         local data = uid
         TomTom:SetCrazyArrow(uid, TomTom.profile.arrow.arrival, data.title)
@@ -1587,3 +1648,33 @@ SlashCmdList["TOMTOM_WAY"] = function(msg)
     end
 end
 
+SLASH_TOMTOM_START_ROUTE1 = "/startroute"
+SlashCmdList["TOMTOM_START_ROUTE"] = function(msg)
+
+    if msg == "" then
+        ChatFrame1:AddMessage("/startroute <name>")
+        return
+    end
+
+    if activeRouteName == "" then
+        activeRouteName = msg
+        activeRouteCounter = 0
+        ChatFrame1:AddMessage("New route started: " .. msg)
+    else
+        ChatFrame1:AddMessage("There is an active route already: " .. msg)        
+        return
+    end
+end
+
+SLASH_TOMTOM_END_ROUTE1 = "/endroute"
+SlashCmdList["TOMTOM_END_ROUTE"] = function(msg)
+
+    if activeRouteName == "" then
+        ChatFrame1:AddMessage("You have to start a route first using /startroute <name>")
+        return
+    end
+
+    ChatFrame1:AddMessage("Route '" .. activeRouteName .. "' ended with " .. activeRouteCounter .. " waypoints")        
+    activeRouteName = ""
+    activeRouteCounter = 0    
+end
